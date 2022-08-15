@@ -1,6 +1,6 @@
 
-        DEVICE NOSLOT64K
-        OUTPUT "ffmsxpp.ips"
+		DEVICE NOSLOT64K
+		OUTPUT "ffmsxpp.ips"
 
 		MACRO PatchAddress address
 		db ((address) >> 16) & 255
