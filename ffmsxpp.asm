@@ -46,12 +46,8 @@ _LOGIN:	equ $18
 	
 		org $8019
 verify_ctrl_boot:
-;		push ix
-;		push iy
 		ld c,_LOGIN
 		call BDOS
-;		pop ix
-;		pop iy
 		ld a,h
 		or a
 		jr nz,.error
