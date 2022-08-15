@@ -41,26 +41,25 @@ Jiffy:	equ	$fc9e
 		org $56ab
 call_update_npc:
 		call copy_tile.update_npc
-		nop
-		nop
-		nop
-.end
-
-
-
-; Remove the check that limits the speed to 6FPS
-		PatchAddress $56f1 + DiskOffset
-		PatchSize remove_framerate_limiter.end - remove_framerate_limiter
-
-		org $56f1
-remove_framerate_limiter:
 		ret
-remove_framerate_limiter.end
-		ASSERT remove_framerate_limiter.end <= $56f9
+.end:
+		ASSERT call_update_npc.end <= $56b5
 
 
 
-; Optimize the routine to convert 16x16 tiles to a set of 4 8x8 tiles
+; Limit the game speed to 12FPS
+		PatchAddress $56f5 + DiskOffset
+		PatchSize update_framerate_limiter.end - update_framerate_limiter
+
+		org $56f5
+update_framerate_limiter:
+		db 5
+update_framerate_limiter.end
+		ASSERT update_framerate_limiter.end <= $56f6
+
+
+
+; Optimize the routine for converting 16x16 tiles to a set of 4 8x8 tiles
 		PatchAddress $5952 + DiskOffset
 		PatchSize convert_16x16_to_8x8.end - convert_16x16_to_8x8
 
@@ -110,7 +109,7 @@ convert_16x16_to_8x8:
 
 
 
-; Optimize the routine for preparing the vdp command data
+; Optimize the routine for copying tiles
 		PatchAddress $5a0b + DiskOffset
 		PatchSize copy_tiles.end - copy_tiles
 
