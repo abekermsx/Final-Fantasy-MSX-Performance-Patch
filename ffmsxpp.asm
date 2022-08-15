@@ -32,8 +32,23 @@ VdpCommandData.NY:	equ $dc10
 VdpCommandData.CMD:	equ $dc15
 VdpCommandData.ARG:	equ $dc16	; CMD / ARG swapped positions
 
+VDP_DR:	equ $6
+VDP_DW:	equ $7
+
+RDSLT:	equ $0c
+CALSLT:	equ $1c
+
+MSXVER:	equ $2d
+
+CHGCPU: equ $180
+
+FNKSTR:	equ $f55e
 JIFFY:	equ	$fc9e
+EXPTBL:	equ $fcc1
+
 BDOS:	equ $f37d
+HKEYI:	equ $fd9a
+HTIMI:	equ $fd9f
 
 _LOGIN:	equ $18
 
@@ -62,13 +77,114 @@ verify_ctrl_boot:
 		ASSERT verify_ctrl_boot.end <= $803a
 
 
+
+		PatchAddress $8170 - LoaderMemoryBase + LoaderDiskOffset
+		PatchSize init.end - init
+		
+		org $8170
+init:
+		ld hl,MSXVER
+		ld a,(EXPTBL)
+		call RDSLT
+		cp 3
+		jr nz,.set_int_handler
+
+		in a,($aa)
+		and $f0
+		add a,7
+		out ($aa),a
+		in a,($a9)
+		rlca
+		rlca
+		jr c,.set_int_handler
+		
+		ld a,$81
+		ld ix,CHGCPU
+		ld iy,(EXPTBL-1)
+		call CALSLT
+
+.set_int_handler:
+		ld hl,VDP_DW
+		ld a,(EXPTBL)
+		call RDSLT
+		inc a
+		ld (.out1 + 1),a
+		ld (.out2 + 1),a
+		ld (.out3 + 1),a
+		ld (.out4 + 1),a
+
+		ld hl,VDP_DR
+		ld a,(EXPTBL)
+		call RDSLT
+		inc a
+		ld (.in1 + 1),a
+		
+		ld hl,.interrupt_handler
+		ld de,FNKSTR
+		ld bc,.end-.interrupt_handler
+		ldir
+		
+		di
+		ld a,$c3	; JP
+		ld (HKEYI),a
+		ld hl,FNKSTR
+		ld (HKEYI + 1),hl
+		ei
+		ret
+
+.interrupt_handler:
+		xor a
+.out1:
+		out ($99),a
+		ld a,$8f
+.out2:
+		out ($99),a
+
+.in1:
+		in a,($99)
+		add a,a
+		jr nc,.no_vblank
+		
+		ld hl,JIFFY	; Abuse JIFFY for NPC animation framerate limiter
+		inc (hl)	
+		
+		call HTIMI
+		
+.no_vblank:
+		ld a,2
+.out3:
+		out ($99),a
+		ld a,$8f
+.out4:
+		out ($99),a
+		
+		pop af		; Remove RET to make sure BIOS doesn't do unwanted things
+
+		pop ix		; Get registers back from stack
+		pop iy
+		pop af
+		pop bc
+		pop de
+		pop hl
+		ex af,af'
+		exx
+		pop af
+		pop bc
+		pop de
+		pop hl
+		ei
+		ret
+.end:
+
+
+
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
 		PatchAddress $56ab - GameMemoryBase + GameDiskOffset
 		PatchSize call_update_npc.end - call_update_npc
 
 		org $56ab
 call_update_npc:
-		call copy_tile.update_npc
+		call copy_tiles.update_npc
 		ret
 .end:
 		ASSERT call_update_npc.end <= $56b5
@@ -138,6 +254,7 @@ convert_16x16_to_8x8:
 
 
 ; Optimize the routine for copying tiles
+; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
 		PatchAddress $5a0b - GameMemoryBase + GameDiskOffset
 		PatchSize copy_tiles.end - copy_tiles
 
@@ -207,18 +324,40 @@ copy_tiles:
 		inc hl
 		jp .loop
 
+.update_npc:
+		ld hl,JIFFY
+		ld a,(hl)
+		sub 10
+		ret c
+		ld (hl),0
+		call $61c4
+		jp $61ce
 .end:
 		ASSERT copy_tiles.end <= $5a86
 
 
 
 ; Optimized the routine for executing the vdp command for copying tiles
-; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
-		PatchAddress $704a - GameMemoryBase + GameDiskOffset
+		PatchAddress $703e - GameMemoryBase + GameDiskOffset
 		PatchSize copy_tile.end - copy_tile
 
-		org $704a
+		org $703e
 copy_tile:
+		push af	; push/pop af is probably not needed
+		push bc
+		push hl
+		
+		ld a,(VdpPort.Read)
+		ld c,a
+.wait:
+		in a,(c)
+		rrca
+		jr c,.wait
+		
+		ld a,$20
+		di
+		call $716c
+		
 		ld hl,VdpCommandData
 		outi	;SX
 		outi
@@ -237,24 +376,19 @@ copy_tile:
 		out (c),h
 		ei
 		out (c),l
+		
 		pop hl
 		pop bc
 		pop af
 		ret
-.update_npc:
-		ld hl,JIFFY
-		ld a,(hl)
-		sub 10
-		ret c
-		ld (hl),0
-		call $61c4
-		jp $61ce
 .end:
 		ASSERT copy_tile.end <= $7085
 
 
 
 ; Optimized routine for reading VDP status register
+; Also makes VDP S#2 the default status register again!
+; TODO: Check if this routine is only used to read VDP S#2 
 		PatchAddress $718d - GameMemoryBase + GameDiskOffset
 		PatchSize read_vdp_status_register.end - read_vdp_status_register
 
@@ -270,7 +404,7 @@ read_vdp_status_register:
         in a,(c)
         push af
         ld c,b
-		xor a
+		ld a,2
 		out (c),a
 		ld a,$8f
 		out (c),a
