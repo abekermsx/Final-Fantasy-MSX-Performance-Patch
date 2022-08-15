@@ -13,7 +13,11 @@
 		db ((size)) & 255
 		ENDM
 
-DiskOffset: equ $8800
+LoaderMemoryBase:	equ $8000
+LoaderDiskOffset:	equ $0400
+
+GameMemoryBase:		equ $4000
+GameDiskOffset: 	equ $c800
 
 VdpPort.Read:	equ $dc02
 VdpPort.Write:	equ $dc03
@@ -28,14 +32,42 @@ VdpCommandData.NY:	equ $dc10
 VdpCommandData.CMD:	equ $dc15
 VdpCommandData.ARG:	equ $dc16	; CMD / ARG swapped positions
 
-Jiffy:	equ	$fc9e
+JIFFY:	equ	$fc9e
+BDOS:	equ $f37d
 
+_LOGIN:	equ $18
 
 		db "PATCH"
 
 
+; Verify that CTRL was pressed during boot to disable 2nd drive
+		PatchAddress $8019 - LoaderMemoryBase + LoaderDiskOffset
+		PatchSize verify_ctrl_boot.end - verify_ctrl_boot
+	
+		org $8019
+verify_ctrl_boot:
+;		push ix
+;		push iy
+		ld c,_LOGIN
+		call BDOS
+;		pop ix
+;		pop iy
+		ld a,h
+		or a
+		jr nz,.error
+		ld a,l
+		dec a
+		ret z
+.error:
+		ld hl,$803a
+		call $80d9
+		jp $816d
+.end:
+		ASSERT verify_ctrl_boot.end <= $803a
+
+
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
-		PatchAddress $56ab + DiskOffset
+		PatchAddress $56ab - GameMemoryBase + GameDiskOffset
 		PatchSize call_update_npc.end - call_update_npc
 
 		org $56ab
@@ -48,7 +80,7 @@ call_update_npc:
 
 
 ; Limit the game speed to 12FPS
-		PatchAddress $56f5 + DiskOffset
+		PatchAddress $56f5 - GameMemoryBase + GameDiskOffset
 		PatchSize update_framerate_limiter.end - update_framerate_limiter
 
 		org $56f5
@@ -60,7 +92,7 @@ update_framerate_limiter.end
 
 
 ; Optimize the routine for converting 16x16 tiles to a set of 4 8x8 tiles
-		PatchAddress $5952 + DiskOffset
+		PatchAddress $5952 - GameMemoryBase + GameDiskOffset
 		PatchSize convert_16x16_to_8x8.end - convert_16x16_to_8x8
 
 		org $5952
@@ -110,7 +142,7 @@ convert_16x16_to_8x8:
 
 
 ; Optimize the routine for copying tiles
-		PatchAddress $5a0b + DiskOffset
+		PatchAddress $5a0b - GameMemoryBase + GameDiskOffset
 		PatchSize copy_tiles.end - copy_tiles
 
 		org $5a0b
@@ -186,7 +218,7 @@ copy_tiles:
 
 ; Optimized the routine for executing the vdp command for copying tiles
 ; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
-		PatchAddress $704a + DiskOffset
+		PatchAddress $704a - GameMemoryBase + GameDiskOffset
 		PatchSize copy_tile.end - copy_tile
 
 		org $704a
@@ -214,7 +246,7 @@ copy_tile:
 		pop af
 		ret
 .update_npc:
-		ld hl,Jiffy
+		ld hl,JIFFY
 		ld a,(hl)
 		sub 10
 		ret c
@@ -227,7 +259,7 @@ copy_tile:
 
 
 ; Optimized routine for reading VDP status register
-		PatchAddress $718d + DiskOffset
+		PatchAddress $718d - GameMemoryBase + GameDiskOffset
 		PatchSize read_vdp_status_register.end - read_vdp_status_register
 
 		org $718d
