@@ -49,9 +49,9 @@ VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
 
 
 		INCBIN "ff.dsk"
-		
-		
-		
+
+
+
 ; Verify that CTRL was pressed during boot to disable 2nd drive
 		FPOS $8019 - LoaderMemoryBase + LoaderDiskOffset
 		ORG $8019
@@ -72,6 +72,7 @@ verify_ctrl_boot:
 
 
 
+; When running on Turbo R, enable R800 if SEL key is pressed
 		FPOS $8170 - LoaderMemoryBase + LoaderDiskOffset
 		ORG $8170
 init:
@@ -89,12 +90,13 @@ init:
 		rlca
 		rlca
 		jr c,set_interrupt_handler
-		
+
 		ld a,$81
 		ld ix,CHGCPU
 		ld iy,(EXPTBL-1)
 		call CALSLT
 
+; Install a custom interrupt handler to be able to use VDP S#2 as default status register
 set_interrupt_handler:
 		ld hl,VDP_DW
 		ld a,(EXPTBL)
@@ -110,12 +112,12 @@ set_interrupt_handler:
 		call RDSLT
 		inc a
 		ld (interrupt_handler.in1 + 1),a
-		
+
 		ld hl,interrupt_handler
 		ld de,FNKSTR
 		ld bc,interrupt_handler.end - interrupt_handler
 		ldir
-		
+
 		di
 		ld a,$c3	; JP
 		ld (HKEYI),a
@@ -136,12 +138,12 @@ interrupt_handler:
 		in a,($99)
 		add a,a
 		jr nc,.no_vblank
-		
+
 		ld hl,JIFFY	; Abuse JIFFY for NPC animation framerate limiter
-		inc (hl)	
-		
+		inc (hl)
+
 		call HTIMI
-		
+
 .no_vblank:
 		ld a,2
 .out3:
@@ -149,7 +151,7 @@ interrupt_handler:
 		ld a,$8f
 .out4:
 		out ($99),a
-		
+
 		pop af		; Remove RET to make sure BIOS doesn't do unwanted things
 
 		pop ix		; Get registers back from stack
@@ -167,7 +169,7 @@ interrupt_handler:
 		ei
 		ret
 .end:
-		
+
 
 
 
@@ -235,11 +237,25 @@ convert_16x16_to_8x8:
 
 
 
-; Optimize the routine for copying tiles
+; Don't call the old routing for copying updated tiles
+		FPOS $58d4 - GameMemoryBase + GameDiskOffset
+		ORG $58d4
+		ret
+		
+; Don't call the old routing for copying updated tiles
+		FPOS $5aa0 - GameMemoryBase + GameDiskOffset
+		ORG $5aa0
+		ret
+
+
+
+; Optimize the routine for copying updated tiles
 ; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
-		FPOS $5a0b - GameMemoryBase + GameDiskOffset
-		ORG $5a0b
-copy_tiles:
+		FPOS $5994 - GameMemoryBase + GameDiskOffset
+		ORG $5994
+copy_updated_tiles:
+
+; Set up VPD command parameters
 		ld hl,8
 		ld (VdpCommandData.NX),hl	; NX
 		ld (VdpCommandData.NY),hl	; NY
@@ -260,28 +276,36 @@ copy_tiles:
 1:
 		ld (VdpCommandData.DY+1),a	; DY MSB (page)
 
-		ld hl,$0440
-		ld bc,16 * 256 + 8
-.loop:
-		ld a,(hl)
-		ld d,a
-		inc a
-		ret z
+		ld a,($dc1b)
+		or a
+		ld hl,$2241
+		ld de,$2200
+		jr z,1f
+		ld hl,$2581
+		ld de,$2540
+1:
+		ld (.hl + 1),hl
+		ld (.de + 1),de
+		ld de,$0141
+.hl:
+		ld hl,$2581
+		ld c,8
+.loop_rows:
 
-		inc hl
-		ld a,(hl)
-		add a,a
-		add a,a
-		add a,a
-		add a,b
+		ld b,16
+.loop_columns:
+		ld a,(de)
+		cp (hl)
+		jr z,.next
+
+.copy:
+		push de
+		ld d,a
+		
+		ld a,b
 		ld (VdpCommandData.DX),a	; DX
 
-		inc hl
-		ld a,(hl)
-		add a,a
-		add a,a
-		add a,a
-		add a,c
+		ld a,c
 		ld (VdpCommandData.DY),a	; DY
 
 		ld a,d
@@ -300,10 +324,42 @@ copy_tiles:
 		rlca
 		ld (VdpCommandData.SX),a	; SX
 
-		call $703e
+		pop de
 
+		call copy_tile
+
+.next:
 		inc hl
-		jp .loop
+		inc de
+		
+		ld a,b
+		add a,8
+		ld b,a
+		cp 240
+		jp nz,.loop_columns
+		
+		inc hl
+		inc hl
+		inc hl
+		inc hl
+		inc de
+		inc de
+		inc de
+		inc de
+		
+		ld a,c
+		add a,8
+		ld c,a
+		cp 184
+		jp nz,.loop_rows
+		
+		ld hl,#0100
+.de:
+		ld de,#2540
+		ld bc,#0340
+		ldir
+		ret
+
 ; Limit NPC animation/movement speed
 update_npc:
 		ld hl,JIFFY
@@ -324,18 +380,18 @@ copy_tile:
 		push af	; push/pop af is probably not needed
 		push bc
 		push hl
-		
+
 		ld a,(VdpPort.Read)
 		ld c,a
 .wait:
 		in a,(c)
 		rrca
 		jr c,.wait
-		
+
 		ld a,$20
 		di
 		call $716c
-		
+
 		ld hl,VdpCommandData
 		outi	;SX
 		outi
@@ -354,7 +410,7 @@ copy_tile:
 		out (c),h
 		ei
 		out (c),l
-		
+
 		pop hl
 		pop bc
 		pop af
@@ -365,7 +421,7 @@ copy_tile:
 
 ; Optimized routine for reading VDP status register
 ; Also makes VDP S#2 the default status register again!
-; TODO: Find out if this routine is only used to read VDP S#2 
+; TODO: Find out if this routine is only used to read VDP S#2
 		FPOS $718d - GameMemoryBase + GameDiskOffset
 		ORG $718d
 read_vdp_status_register:
