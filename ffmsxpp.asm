@@ -14,7 +14,7 @@ MSXVER:	EQU $2d
 
 CHGCPU: EQU $180
 
-FNKSTR:	EQU $f55e
+BUF:	EQU $f55e
 JIFFY:	EQU	$fc9e
 EXPTBL:	EQU $fcc1
 
@@ -50,7 +50,7 @@ VdpCommandData.NY:	EQU $dc10
 VdpCommandData.CMD:	EQU $dc15
 VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
 
-TurboMode:			EQU FNKSTR-1
+TurboMode:			EQU BUF-1
 
 
 		INCBIN "ff.dsk"
@@ -125,14 +125,14 @@ set_interrupt_handler:
 		ld (interrupt_handler.in1 + 1),a
 
 		ld hl,interrupt_handler
-		ld de,FNKSTR
+		ld de,BUF
 		ld bc,interrupt_handler.end - interrupt_handler
 		ldir
 
 		di
 		ld a,$c3	; JP
 		ld (HKEYI),a
-		ld hl,FNKSTR
+		ld hl,BUF
 		ld (HKEYI + 1),hl
 		ei
 		ret
