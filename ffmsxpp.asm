@@ -1,65 +1,60 @@
 
-		DEVICE NOSLOT64K
-		OUTPUT "ffmsxpp.ips"
-
-		MACRO PatchAddress address
-		db ((address) >> 16) & 255
-		db ((address) >> 8) & 255
-		db ((address)) & 255
-		ENDM
-
-		MACRO PatchSize size
-		db ((size) >> 8) & 255
-		db ((size)) & 255
-		ENDM
-
-LoaderMemoryBase:	equ $8000
-LoaderDiskOffset:	equ $0400
-
-GameMemoryBase:		equ $4000
-GameDiskOffset: 	equ $c800
-
-VdpPort.Read:	equ $dc02
-VdpPort.Write:	equ $dc03
-
-VdpCommandData:		equ $dc06
-VdpCommandData.SX:	equ $dc06
-VdpCommandData.SY:	equ $dc08
-VdpCommandData.DX:	equ $dc0a
-VdpCommandData.DY:	equ $dc0c
-VdpCommandData.NX:	equ $dc0e
-VdpCommandData.NY:	equ $dc10
-VdpCommandData.CMD:	equ $dc15
-VdpCommandData.ARG:	equ $dc16	; CMD / ARG swapped positions
-
-VDP_DR:	equ $6
-VDP_DW:	equ $7
-
-RDSLT:	equ $0c
-CALSLT:	equ $1c
-
-MSXVER:	equ $2d
-
-CHGCPU: equ $180
-
-FNKSTR:	equ $f55e
-JIFFY:	equ	$fc9e
-EXPTBL:	equ $fcc1
-
-BDOS:	equ $f37d
-HKEYI:	equ $fd9a
-HTIMI:	equ $fd9f
-
-_LOGIN:	equ $18
-
-		db "PATCH"
+		DEVICE NONE
+		OUTPUT "ffmsxpp.dsk"
 
 
+
+VDP_DR:	EQU $6
+VDP_DW:	EQU $7
+
+RDSLT:	EQU $0c
+CALSLT:	EQU $1c
+
+MSXVER:	EQU $2d
+
+CHGCPU: EQU $180
+
+FNKSTR:	EQU $f55e
+JIFFY:	EQU	$fc9e
+EXPTBL:	EQU $fcc1
+
+BDOS:	EQU $f37d
+HKEYI:	EQU $fd9a
+HTIMI:	EQU $fd9f
+
+_LOGIN:	EQU $18
+
+
+
+LoaderMemoryBase:	EQU $8000
+LoaderDiskOffset:	EQU $0400
+
+GameMemoryBase:		EQU $4000
+GameDiskOffset: 	EQU $c800
+
+
+VdpPort.Read:		EQU $dc02
+VdpPort.Write:		EQU $dc03
+
+VdpCommandData:		EQU $dc06
+VdpCommandData.SX:	EQU $dc06
+VdpCommandData.SY:	EQU $dc08
+VdpCommandData.DX:	EQU $dc0a
+VdpCommandData.DY:	EQU $dc0c
+VdpCommandData.NX:	EQU $dc0e
+VdpCommandData.NY:	EQU $dc10
+VdpCommandData.CMD:	EQU $dc15
+VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
+
+
+
+		INCBIN "ff.dsk"
+		
+		
+		
 ; Verify that CTRL was pressed during boot to disable 2nd drive
-		PatchAddress $8019 - LoaderMemoryBase + LoaderDiskOffset
-		PatchSize verify_ctrl_boot.end - verify_ctrl_boot
-	
-		org $8019
+		FPOS $8019 - LoaderMemoryBase + LoaderDiskOffset
+		ORG $8019
 verify_ctrl_boot:
 		ld c,_LOGIN
 		call BDOS
@@ -73,21 +68,18 @@ verify_ctrl_boot:
 		ld hl,$803a
 		call $80d9
 		jp $816d
-.end:
-		ASSERT verify_ctrl_boot.end <= $803a
+		ASSERT $ <= $803a
 
 
 
-		PatchAddress $8170 - LoaderMemoryBase + LoaderDiskOffset
-		PatchSize init.end - init
-		
-		org $8170
+		FPOS $8170 - LoaderMemoryBase + LoaderDiskOffset
+		ORG $8170
 init:
 		ld hl,MSXVER
 		ld a,(EXPTBL)
 		call RDSLT
 		cp 3
-		jr nz,.set_int_handler
+		jr nz,set_interrupt_handler
 
 		in a,($aa)
 		and $f0
@@ -96,32 +88,32 @@ init:
 		in a,($a9)
 		rlca
 		rlca
-		jr c,.set_int_handler
+		jr c,set_interrupt_handler
 		
 		ld a,$81
 		ld ix,CHGCPU
 		ld iy,(EXPTBL-1)
 		call CALSLT
 
-.set_int_handler:
+set_interrupt_handler:
 		ld hl,VDP_DW
 		ld a,(EXPTBL)
 		call RDSLT
 		inc a
-		ld (.out1 + 1),a
-		ld (.out2 + 1),a
-		ld (.out3 + 1),a
-		ld (.out4 + 1),a
+		ld (interrupt_handler.out1 + 1),a
+		ld (interrupt_handler.out2 + 1),a
+		ld (interrupt_handler.out3 + 1),a
+		ld (interrupt_handler.out4 + 1),a
 
 		ld hl,VDP_DR
 		ld a,(EXPTBL)
 		call RDSLT
 		inc a
-		ld (.in1 + 1),a
+		ld (interrupt_handler.in1 + 1),a
 		
-		ld hl,.interrupt_handler
+		ld hl,interrupt_handler
 		ld de,FNKSTR
-		ld bc,.end-.interrupt_handler
+		ld bc,interrupt_handler.end - interrupt_handler
 		ldir
 		
 		di
@@ -132,7 +124,7 @@ init:
 		ei
 		ret
 
-.interrupt_handler:
+interrupt_handler:
 		xor a
 .out1:
 		out ($99),a
@@ -175,39 +167,31 @@ init:
 		ei
 		ret
 .end:
+		
 
 
 
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
-		PatchAddress $56ab - GameMemoryBase + GameDiskOffset
-		PatchSize call_update_npc.end - call_update_npc
-
-		org $56ab
+		FPOS $56ab - GameMemoryBase + GameDiskOffset
+		ORG $56ab
 call_update_npc:
-		call copy_tiles.update_npc
+		call update_npc
 		ret
-.end:
-		ASSERT call_update_npc.end <= $56b5
+		ASSERT $ <= $56b5
 
 
 
 ; Limit the game speed to 12FPS
-		PatchAddress $56f5 - GameMemoryBase + GameDiskOffset
-		PatchSize update_framerate_limiter.end - update_framerate_limiter
-
-		org $56f5
+		FPOS $56f5 - GameMemoryBase + GameDiskOffset
+		ORG $56f5
 update_framerate_limiter:
-		db 5
-update_framerate_limiter.end
-		ASSERT update_framerate_limiter.end <= $56f6
+		ASSERT $ <= $56f6
 
 
 
 ; Optimize the routine for converting 16x16 tiles to a set of 4 8x8 tiles
-		PatchAddress $5952 - GameMemoryBase + GameDiskOffset
-		PatchSize convert_16x16_to_8x8.end - convert_16x16_to_8x8
-
-		org $5952
+		FPOS $5952 - GameMemoryBase + GameDiskOffset
+		ORG $5952
 convert_16x16_to_8x8:
 		ld iy,$2880
 		ld ix,$0100
@@ -248,17 +232,14 @@ convert_16x16_to_8x8:
 		dec c
 		jp nz,.loop_rows
 		ret
-.end:
-		ASSERT convert_16x16_to_8x8.end <= $5994
+		ASSERT $ <= $5994
 
 
 
 ; Optimize the routine for copying tiles
 ; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
-		PatchAddress $5a0b - GameMemoryBase + GameDiskOffset
-		PatchSize copy_tiles.end - copy_tiles
-
-		org $5a0b
+		FPOS $5a0b - GameMemoryBase + GameDiskOffset
+		ORG $5a0b
 copy_tiles:
 		ld hl,8
 		ld (VdpCommandData.NX),hl	; NX
@@ -323,8 +304,8 @@ copy_tiles:
 
 		inc hl
 		jp .loop
-
-.update_npc:
+; Limit NPC animation/movement speed
+update_npc:
 		ld hl,JIFFY
 		ld a,(hl)
 		sub 10
@@ -332,16 +313,13 @@ copy_tiles:
 		ld (hl),0
 		call $61c4
 		jp $61ce
-.end:
-		ASSERT copy_tiles.end <= $5a86
+		ASSERT $ <= $5a86
 
 
 
 ; Optimized the routine for executing the vdp command for copying tiles
-		PatchAddress $703e - GameMemoryBase + GameDiskOffset
-		PatchSize copy_tile.end - copy_tile
-
-		org $703e
+		FPOS $703e - GameMemoryBase + GameDiskOffset
+		ORG $703e
 copy_tile:
 		push af	; push/pop af is probably not needed
 		push bc
@@ -381,18 +359,15 @@ copy_tile:
 		pop bc
 		pop af
 		ret
-.end:
-		ASSERT copy_tile.end <= $7085
+		ASSERT $ <= $7085
 
 
 
 ; Optimized routine for reading VDP status register
 ; Also makes VDP S#2 the default status register again!
-; TODO: Check if this routine is only used to read VDP S#2 
-		PatchAddress $718d - GameMemoryBase + GameDiskOffset
-		PatchSize read_vdp_status_register.end - read_vdp_status_register
-
-		org $718d
+; TODO: Find out if this routine is only used to read VDP S#2 
+		FPOS $718d - GameMemoryBase + GameDiskOffset
+		ORG $718d
 read_vdp_status_register:
         push bc
         ld bc,(VdpPort.Write)
@@ -411,8 +386,4 @@ read_vdp_status_register:
 		pop af
 		pop bc
 		ret
-.end:
-		ASSERT read_vdp_status_register.end <= $71b1
-
-
-		db "EOF"
+		ASSERT $ <= $71b1
