@@ -32,6 +32,10 @@ LoaderDiskOffset:	EQU $0400
 GameMemoryBase:		EQU $4000
 GameDiskOffset: 	EQU $c800
 
+BattleMemoryBase:	EQU $8000
+BattleDiskOffset:	EQU $18800
+
+
 
 VdpPort.Read:		EQU $dc02
 VdpPort.Write:		EQU $dc03
@@ -46,6 +50,7 @@ VdpCommandData.NY:	EQU $dc10
 VdpCommandData.CMD:	EQU $dc15
 VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
 
+TurboMode:			EQU FNKSTR-1
 
 
 		INCBIN "ff.dsk"
@@ -76,6 +81,9 @@ verify_ctrl_boot:
 		FPOS $8170 - LoaderMemoryBase + LoaderDiskOffset
 		ORG $8170
 init:
+		xor a
+		ld (TurboMode),a
+
 		ld hl,MSXVER
 		ld a,(EXPTBL)
 		call RDSLT
@@ -95,6 +103,9 @@ init:
 		ld ix,CHGCPU
 		ld iy,(EXPTBL-1)
 		call CALSLT
+
+		ld a,1
+		ld (TurboMode),a
 
 ; Install a custom interrupt handler to be able to use VDP S#2 as default status register
 set_interrupt_handler:
@@ -241,7 +252,7 @@ convert_16x16_to_8x8:
 		FPOS $58d4 - GameMemoryBase + GameDiskOffset
 		ORG $58d4
 		ret
-		
+
 ; Don't call the old routing for copying updated tiles
 		FPOS $5aa0 - GameMemoryBase + GameDiskOffset
 		ORG $5aa0
@@ -250,7 +261,7 @@ convert_16x16_to_8x8:
 
 
 ; Optimize the routine for copying updated tiles
-; Use the freed up space for the routine to limit NPC animation/movement speed when player is idle
+; Use the freed up space for some other routines
 		FPOS $5994 - GameMemoryBase + GameDiskOffset
 		ORG $5994
 copy_updated_tiles:
@@ -301,7 +312,7 @@ copy_updated_tiles:
 .copy:
 		push de
 		ld d,a
-		
+
 		ld a,b
 		ld (VdpCommandData.DX),a	; DX
 
@@ -331,13 +342,13 @@ copy_updated_tiles:
 .next:
 		inc hl
 		inc de
-		
+
 		ld a,b
 		add a,8
 		ld b,a
 		cp 240
 		jp nz,.loop_columns
-		
+
 		inc hl
 		inc hl
 		inc hl
@@ -346,13 +357,13 @@ copy_updated_tiles:
 		inc de
 		inc de
 		inc de
-		
+
 		ld a,c
 		add a,8
 		ld c,a
 		cp 184
 		jp nz,.loop_rows
-		
+
 		ld hl,#0100
 .de:
 		ld de,#2540
@@ -369,7 +380,49 @@ update_npc:
 		ld (hl),0
 		call $61c4
 		jp $61ce
+
+; Updated sleep routine, use R800 timer if turbo mode is enabled
+sleep:
+		push af
+		push bc
+		
+		ld a,(TurboMode)
+		or a
+		jr nz,.turbo
+
+.loop_b:
+		ld c,0
+.loop_c:
+		dec c
+		jr nz,.loop_c
+		djnz .loop_b
+		jr .end
+
+.turbo:
+		xor a
+		out ($e6),a
+.wait_msb:
+		in a,($e7)
+		or a
+		jr z,.wait_msb
+.wait_lsb:
+		in a,($e6)
+		cp 74
+		jr c,.wait_lsb
+		djnz .turbo
+		
+.end:
+		pop bc
+		pop af
+		ret
 		ASSERT $ <= $5a86
+		
+
+
+; Redirect all calls to sleep routine to new sleep routine		
+		FPOS $5e96 - GameMemoryBase + GameDiskOffset
+		ORG $5e96
+		jp sleep
 
 
 
@@ -443,3 +496,20 @@ read_vdp_status_register:
 		pop bc
 		ret
 		ASSERT $ <= $71b1
+
+
+
+; Convert battle speed(?) parameter and use new sleep routine to wait
+		FPOS $a2be - BattleMemoryBase + BattleDiskOffset
+		add a,a
+		add a,a
+		add a,a
+		add a,a
+		ld b,a
+		jp sleep
+
+
+		
+; Redirect all calls to sleep routine to new sleep routine
+		FPOS $aabe - BattleMemoryBase + BattleDiskOffset
+		jp sleep
