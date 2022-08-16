@@ -175,8 +175,7 @@ interrupt_handler:
 		FPOS $56ab - GameMemoryBase + GameDiskOffset
 		ORG $56ab
 call_update_npc:
-		call update_npc
-		ret
+		jp update_npc
 		ASSERT $ <= $56b5
 
 
@@ -185,6 +184,7 @@ call_update_npc:
 		FPOS $56f5 - GameMemoryBase + GameDiskOffset
 		ORG $56f5
 update_framerate_limiter:
+		db 5
 		ASSERT $ <= $56f6
 
 
@@ -201,9 +201,8 @@ convert_16x16_to_8x8:
 .loop_rows:
 
 		ld b,$10
-.loop_columns:
 		ld e,$80
-
+.loop_columns:
 		ld l,(iy)
 		ld h,$c6
 		ld a,(hl)
@@ -262,6 +261,7 @@ copy_tiles:
 		ld (VdpCommandData.DY+1),a	; DY MSB (page)
 
 		ld hl,$0440
+		ld bc,16 * 256 + 8
 .loop:
 		ld a,(hl)
 		ld d,a
@@ -273,7 +273,7 @@ copy_tiles:
 		add a,a
 		add a,a
 		add a,a
-		add a,16
+		add a,b
 		ld (VdpCommandData.DX),a	; DX
 
 		inc hl
@@ -281,7 +281,7 @@ copy_tiles:
 		add a,a
 		add a,a
 		add a,a
-		add a,8
+		add a,c
 		ld (VdpCommandData.DY),a	; DY
 
 		ld a,d
