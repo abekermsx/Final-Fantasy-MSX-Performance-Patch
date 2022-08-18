@@ -15,6 +15,7 @@ MSXVER:	EQU $2d
 CHGCPU: EQU $180
 
 BUF:	EQU $f55e
+TTYPOS:	EQU	$f661
 JIFFY:	EQU	$fc9e
 EXPTBL:	EQU $fcc1
 
@@ -36,7 +37,7 @@ BattleMemoryBase:	EQU $8000
 BattleDiskOffset:	EQU $18800
 
 
-
+VdpPort.Vram:		EQU $dc01
 VdpPort.Read:		EQU $dc02
 VdpPort.Write:		EQU $dc03
 
@@ -109,6 +110,11 @@ init:
 
 ; Install a custom interrupt handler to be able to use VDP S#2 as default status register
 set_interrupt_handler:
+		ld hl,data
+		ld de,BUF
+		ld bc,data_end - data_start
+		ldir
+
 		ld hl,VDP_DW
 		ld a,(EXPTBL)
 		call RDSLT
@@ -123,12 +129,7 @@ set_interrupt_handler:
 		call RDSLT
 		inc a
 		ld (interrupt_handler.in1 + 1),a
-
-		ld hl,interrupt_handler
-		ld de,BUF
-		ld bc,interrupt_handler.end - interrupt_handler
-		ldir
-
+		
 		di
 		ld a,$c3	; JP
 		ld (HKEYI),a
@@ -137,6 +138,9 @@ set_interrupt_handler:
 		ei
 		ret
 
+data:
+		ORG BUF
+data_start:
 interrupt_handler:
 		xor a
 .out1:
@@ -179,9 +183,68 @@ interrupt_handler:
 		pop hl
 		ei
 		ret
-.end:
+
+; A fast otir routine, assuming DE is a multiple of 16
+fast_otir_de:
+		ld b,e
+		inc d
+.loop:
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		outi
+		jp nz,.loop
+		dec d
+		jp nz,.loop
+		ret
+
+; A fast ldir routine, assuming BC is multiple of 16
+fast_ldir:
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		ldi
+		jp pe,fast_ldir
+		ret
+data_end:
+		ASSERT $ <= TTYPOS
 
 
+
+; Use new sleep routine in 'window' effect
+		FPOS $5657 - GameMemoryBase + GameDiskOffset
+		ORG $5657
+		push bc
+		ld b,3
+		call sleep
+		pop bc
+		ret
+		ASSERT $ <= $5663
+		
 
 
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
@@ -368,8 +431,9 @@ copy_updated_tiles:
 .de:
 		ld de,#2540
 		ld bc,#0340
-		ldir
-		ret
+		jp fast_ldir
+		
+		
 
 ; Limit NPC animation/movement speed
 update_npc:
@@ -385,7 +449,7 @@ update_npc:
 sleep:
 		push af
 		push bc
-		
+
 		ld a,(TurboMode)
 		or a
 		jr nz,.turbo
@@ -410,16 +474,23 @@ sleep:
 		cp 74
 		jr c,.wait_lsb
 		djnz .turbo
-		
+
 .end:
 		pop bc
 		pop af
 		ret
 		ASSERT $ <= $5a86
-		
 
 
-; Redirect all calls to sleep routine to new sleep routine		
+
+; Use fast ldir routine to copy map
+		FPOS $5ace - GameMemoryBase + GameDiskOffset
+		ORG $5ace
+		jp fast_ldir
+
+
+
+; Redirect all calls to sleep routine to new sleep routine
 		FPOS $5e96 - GameMemoryBase + GameDiskOffset
 		ORG $5e96
 		jp sleep
@@ -499,6 +570,60 @@ read_vdp_status_register:
 
 
 
+; A faster routine for setting up VRAM address
+		FPOS $7417 - GameMemoryBase + GameDiskOffset
+		ORG $7417
+set_vram_pointer:
+		push hl
+		
+		ex af,af'
+		
+		ld a,(VdpPort.Write)
+		ld c,a
+		
+		ld a,h
+        and $c0
+        or b
+        rlca
+        rlca
+        di
+        out (c),a
+        ld a,$8e
+        out (c),a
+        ld a,l
+        out (c),a
+		ex af,af'
+		or a
+        ld a,h
+		jr z,.read
+        and $3f
+        or $40
+		out ($99),a
+		ld a,(VdpPort.Vram)
+		ld c,a
+		pop hl
+		ret
+
+.read:
+		and $3f
+		out ($99),a
+		ld a,(VdpPort.Vram)
+		ld c,a
+		pop hl
+		ret
+		ASSERT $ <= $7459
+
+
+
+; Use fast otir routine to copy sprite colors
+		FPOS $8389 - GameMemoryBase + GameDiskOffset
+		ORG $8389
+		call fast_otir_de
+		ei
+		ret
+		
+
+
 ; Convert battle speed(?) parameter and use new sleep routine to wait
 		FPOS $a2be - BattleMemoryBase + BattleDiskOffset
 		add a,a
@@ -509,7 +634,7 @@ read_vdp_status_register:
 		jp sleep
 
 
-		
+
 ; Redirect all calls to sleep routine to new sleep routine
 		FPOS $aabe - BattleMemoryBase + BattleDiskOffset
 		jp sleep
