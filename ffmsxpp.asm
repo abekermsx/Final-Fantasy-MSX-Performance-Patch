@@ -30,11 +30,18 @@ _LOGIN:	EQU $18
 LoaderMemoryBase:	EQU $8000
 LoaderDiskOffset:	EQU $0400
 
+; MAIN.COM
 GameMemoryBase:		EQU $4000
 GameDiskOffset: 	EQU $c800
 
+; SMAP.COM
+TownMemoryBase:		EQU $8000
+TownDiskOffset:		EQU $10800
+
+; BATTLE.COM
 BattleMemoryBase:	EQU $8000
 BattleDiskOffset:	EQU $18800
+
 
 
 VdpPort.Vram:		EQU $dc01
@@ -487,6 +494,7 @@ sleep:
 		FPOS $5ace - GameMemoryBase + GameDiskOffset
 		ORG $5ace
 		jp fast_ldir
+		ASSERT $ <= $5ad1
 
 
 
@@ -494,6 +502,7 @@ sleep:
 		FPOS $5e96 - GameMemoryBase + GameDiskOffset
 		ORG $5e96
 		jp sleep
+		ASSERT $ <= $5ea0
 
 
 
@@ -596,6 +605,8 @@ set_vram_pointer:
 		or a
         ld a,h
 		jr z,.read
+		
+.write:
         and $3f
         or $40
 		out ($99),a
@@ -615,12 +626,21 @@ set_vram_pointer:
 
 
 
+; Use fast ldir routine
+		FPOS $8308 - TownMemoryBase + TownDiskOffset
+		ORG $8308
+		jp fast_ldir
+		ASSERT $ <= $830b
+
+
+
 ; Use fast otir routine to copy sprite colors
-		FPOS $8389 - GameMemoryBase + GameDiskOffset
+		FPOS $8389 - TownMemoryBase + TownDiskOffset
 		ORG $8389
 		call fast_otir_de
 		ei
 		ret
+		ASSERT $ <= $8392
 		
 
 
@@ -632,9 +652,11 @@ set_vram_pointer:
 		add a,a
 		ld b,a
 		jp sleep
+		ASSERT $ <= $a2cc
 
 
 
 ; Redirect all calls to sleep routine to new sleep routine
 		FPOS $aabe - BattleMemoryBase + BattleDiskOffset
 		jp sleep
+		ASSERT $ <= $aac7
