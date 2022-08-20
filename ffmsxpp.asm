@@ -319,12 +319,12 @@ convert_16x16_to_8x8:
 
 
 
-; Don't call the old routing for copying updated tiles
+; Don't call the old routine for copying updated tiles
 		FPOS $58d4 - GameMemoryBase + GameDiskOffset
 		ORG $58d4
 		ret
 
-; Don't call the old routing for copying updated tiles
+; Don't call the old routine for copying updated tiles
 		FPOS $5aa0 - GameMemoryBase + GameDiskOffset
 		ORG $5aa0
 		ret
@@ -362,15 +362,25 @@ copy_updated_tiles:
 		or a
 		ld hl,$2241
 		ld de,$2200
+		ld ix,$238e
 		jr z,1f
 		ld hl,$2581
 		ld de,$2540
+		ld ix,$26ce
 1:
 		ld (.hl + 1),hl
 		ld (.de + 1),de
 		ld de,$0141
 .hl:
 		ld hl,$2581
+		
+		ld a,$ff
+		ld (ix+#00),a
+		ld (ix+#01),a
+		ld (ix+#20),a
+		ld (ix+#21),a
+		
+		
 		ld c,8
 .loop_rows:
 
@@ -440,8 +450,6 @@ copy_updated_tiles:
 		ld de,#2540
 		ld bc,#0340
 		jp fast_ldir
-
-
 
 ; Limit NPC animation/movement speed
 update_npc:
@@ -514,7 +522,7 @@ copy_tile:
 		push af	; push/pop af is probably not needed
 		push bc
 		push hl
-
+		
 		ld a,$20
 		di
 		call $716c
@@ -555,6 +563,27 @@ copy_tile:
 		pop af
 		ret
 		ASSERT $ <= $7085
+
+
+
+; Optimized routine for checking if VDP command has completed
+		FPOS $717e - GameMemoryBase + GameDiskOffset
+		ORG $717e
+wait_vdp_command_completion:
+		push af
+		push bc
+		
+		ld a,(VdpPort.Read)
+		ld c,a
+.wait:
+		in a,(c)
+		rrca
+		jr c,.wait
+		
+		pop bc
+		pop af
+		ret
+		ASSERT $ <= $718f
 
 
 
