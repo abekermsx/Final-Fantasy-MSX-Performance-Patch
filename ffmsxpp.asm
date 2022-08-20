@@ -47,6 +47,7 @@ BattleDiskOffset:	EQU $18800
 VdpPort.Vram:		EQU $dc01
 VdpPort.Read:		EQU $dc02
 VdpPort.Write:		EQU $dc03
+VdpPort.WriteIndirect:		EQU $dc05
 
 VdpCommandData:		EQU $dc06
 VdpCommandData.SX:	EQU $dc06
@@ -136,7 +137,7 @@ set_interrupt_handler:
 		call RDSLT
 		inc a
 		ld (interrupt_handler.in1 + 1),a
-		
+
 		di
 		ld a,$c3	; JP
 		ld (HKEYI),a
@@ -251,7 +252,7 @@ data_end:
 		pop bc
 		ret
 		ASSERT $ <= $5663
-		
+
 
 
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
@@ -439,8 +440,8 @@ copy_updated_tiles:
 		ld de,#2540
 		ld bc,#0340
 		jp fast_ldir
-		
-		
+
+
 
 ; Limit NPC animation/movement speed
 update_npc:
@@ -514,6 +515,12 @@ copy_tile:
 		push bc
 		push hl
 
+		ld a,$20
+		di
+		call $716c
+		ei
+		ld b,c
+		
 		ld a,(VdpPort.Read)
 		ld c,a
 .wait:
@@ -521,11 +528,10 @@ copy_tile:
 		rrca
 		jr c,.wait
 
-		ld a,$20
-		di
-		call $716c
-
 		ld hl,VdpCommandData
+		ld c,b
+		
+		di
 		outi	;SX
 		outi
 		outi	;SY
@@ -584,12 +590,12 @@ read_vdp_status_register:
 		ORG $7417
 set_vram_pointer:
 		push hl
-		
+
 		ex af,af'
-		
+
 		ld a,(VdpPort.Write)
 		ld c,a
-		
+
 		ld a,h
         and $c0
         or b
@@ -605,7 +611,7 @@ set_vram_pointer:
 		or a
         ld a,h
 		jr z,.read
-		
+
 .write:
         and $3f
         or $40
@@ -641,7 +647,7 @@ set_vram_pointer:
 		ei
 		ret
 		ASSERT $ <= $8392
-		
+
 
 
 ; Convert battle speed(?) parameter and use new sleep routine to wait
