@@ -14,6 +14,7 @@ MSXVER:	EQU $2d
 
 CHGCPU: EQU $180
 
+RG0SAV:	EQU $f3df
 BUF:	EQU $f55e
 TTYPOS:	EQU	$f661
 JIFFY:	EQU	$fc9e
@@ -41,6 +42,9 @@ TownDiskOffset:		EQU $10800
 ; BATTLE.COM
 BattleMemoryBase:	EQU $8000
 BattleDiskOffset:	EQU $18800
+
+; STARTUP.COM
+StartUpDiskOffset:	EQU $1c800
 
 
 
@@ -132,17 +136,33 @@ set_interrupt_handler:
 		ld (interrupt_handler.out3 + 1),a
 		ld (interrupt_handler.out4 + 1),a
 
+		push af
+
 		ld hl,VDP_DR
 		ld a,(EXPTBL)
 		call RDSLT
 		inc a
 		ld (interrupt_handler.in1 + 1),a
 
-		di
 		ld a,$c3	; JP
 		ld (HKEYI),a
 		ld hl,BUF
 		ld (HKEYI + 1),hl
+
+		pop af
+		ld c,a
+		ld a,1
+		out (c),a
+		ld a,$80 + 19
+		out (c),a
+
+		ld a,(RG0SAV)
+		or 16
+		ld (RG0SAV),a
+		out (c),a
+		ld a,$80
+		out (c),a
+
 		ei
 		ret
 
@@ -160,14 +180,29 @@ interrupt_handler:
 .in1:
 		in a,($99)
 		add a,a
-		jr nc,.no_vblank
+		jr c,.vblank
 
+		ld a,1
+		out ($99),a
+		ld a,$8f
+		out ($99),a
+
+		in a,($99)
+		rra
+		jr nc,.end
+
+.hblank:
+		call HTIMI
+		jr.end
+
+.vblank:
 		ld hl,JIFFY	; Abuse JIFFY for NPC animation framerate limiter
 		inc (hl)
 
-		call HTIMI
+		ld hl,$dc1d
+		inc (hl)
 
-.no_vblank:
+.end:
 		ld a,2
 .out3:
 		out ($99),a
@@ -220,24 +255,35 @@ fast_otir_de:
 
 ; A fast ldir routine, assuming BC is multiple of 16
 fast_ldir:
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
-		ldi
+fast_ldir_10:	ldi
+fast_ldir_f:	ldi
+fast_ldir_e:	ldi
+fast_ldir_d:	ldi
+fast_ldir_c:	ldi
+fast_ldir_b:	ldi
+fast_ldir_a:	ldi
+fast_ldir_9:	ldi
+fast_ldir_8:	ldi
+fast_ldir_7:	ldi
+fast_ldir_6:	ldi
+fast_ldir_5:	ldi
+fast_ldir_4:	ldi
+fast_ldir_3:	ldi
+fast_ldir_2:	ldi
+fast_ldir_1:	ldi
 		jp pe,fast_ldir
 		ret
+
+; Fast HL/8 using just shifts
+fast_hl_div_8:
+		srl h
+		rr l	; /2
+		srl h
+		rr l	; /4
+		srl h
+		rr l	; /8
+		ret
+
 data_end:
 		ASSERT $ <= TTYPOS
 
@@ -252,9 +298,9 @@ data_end:
 		pop bc
 		ret
 		ASSERT $ <= $5663
-
-
-
+		
+		
+		
 ; When player is idle, the NPC movement/animation speed should be frame rate limited
 		FPOS $56ab - GameMemoryBase + GameDiskOffset
 		ORG $56ab
@@ -373,14 +419,14 @@ copy_updated_tiles:
 		ld de,$0141
 .hl:
 		ld hl,$2581
-		
+
 		ld a,$ff
-		ld (ix+#00),a
-		ld (ix+#01),a
-		ld (ix+#20),a
-		ld (ix+#21),a
-		
-		
+		ld (ix + $00),a
+		ld (ix + $01),a
+		ld (ix + $20),a
+		ld (ix + $21),a
+
+
 		ld c,8
 .loop_rows:
 
@@ -445,10 +491,10 @@ copy_updated_tiles:
 		cp 184
 		jp nz,.loop_rows
 
-		ld hl,#0100
+		ld hl,$0100
 .de:
-		ld de,#2540
-		ld bc,#0340
+		ld de,$2540
+		ld bc,$0340
 		jp fast_ldir
 
 ; Limit NPC animation/movement speed
@@ -460,7 +506,7 @@ update_npc:
 		ld (hl),0
 		call $61c4
 		jp $61ce
-
+		
 ; Updated sleep routine, use R800 timer if turbo mode is enabled
 sleep:
 		push af
@@ -522,13 +568,13 @@ copy_tile:
 		push af	; push/pop af is probably not needed
 		push bc
 		push hl
-		
+
 		ld a,$20
 		di
 		call $716c
 		ei
 		ld b,c
-		
+
 		ld a,(VdpPort.Read)
 		ld c,a
 .wait:
@@ -538,7 +584,7 @@ copy_tile:
 
 		ld hl,VdpCommandData
 		ld c,b
-		
+
 		di
 		outi	;SX
 		outi
@@ -566,24 +612,41 @@ copy_tile:
 
 
 
+; Setup VDP write register indirect
+		FPOS $716c - GameMemoryBase + GameDiskOffset
+		ORG $716c
+		ld b,a
+		ld a,($dc03)
+		ld c,a
+		out (c),b
+		ld a,$91
+		out (c),a
+		ld a,($dc05)
+		ld c,a
+		ld a,b
+		ret
+		ASSERT $ <= $717e
+
+
+
 ; Optimized routine for checking if VDP command has completed
 		FPOS $717e - GameMemoryBase + GameDiskOffset
 		ORG $717e
 wait_vdp_command_completion:
 		push af
 		push bc
-		
+
 		ld a,(VdpPort.Read)
 		ld c,a
 .wait:
 		in a,(c)
 		rrca
 		jr c,.wait
-		
+
 		pop bc
 		pop af
 		ret
-		ASSERT $ <= $718f
+		ASSERT $ <= $718d
 
 
 
@@ -618,8 +681,6 @@ read_vdp_status_register:
 		FPOS $7417 - GameMemoryBase + GameDiskOffset
 		ORG $7417
 set_vram_pointer:
-		push hl
-
 		ex af,af'
 
 		ld a,(VdpPort.Write)
@@ -644,20 +705,172 @@ set_vram_pointer:
 .write:
         and $3f
         or $40
-		out ($99),a
+		out (c),a
 		ld a,(VdpPort.Vram)
 		ld c,a
-		pop hl
 		ret
 
 .read:
 		and $3f
-		out ($99),a
+		out (c),a
 		ld a,(VdpPort.Vram)
 		ld c,a
-		pop hl
 		ret
 		ASSERT $ <= $7459
+
+
+
+; Use fast ldir routine
+		FPOS $78a2 - GameMemoryBase + GameDiskOffset
+		ORG $78a2
+		jp fast_ldir_c
+		ASSERT $ <= $78a5
+
+
+
+; Optimized music event table scan
+		FPOS $7729 - GameMemoryBase + GameDiskOffset
+		ORG $7729
+scan_music_event_table:
+		ld hl,$7716
+		push hl
+		ld l,$3f
+		sub (hl)
+		jr c,.found
+.loop:
+		inc l		; table doesn't cross 256 byte boundary
+		inc l
+		inc l
+		sub (hl)
+		jr nc,.loop
+.found:
+		add a,(hl)
+		inc l
+		ld e,(hl)
+		inc l
+		ld d,(hl)
+		ex de,hl
+		jp (hl)
+		ASSERT $ <= $773f
+
+
+
+; Use fast HL/8 instead of slow HL/DE
+		FPOS $7951 - GameMemoryBase + GameDiskOffset
+		ORG $7951
+		call fast_hl_div_8
+		ASSERT $ <= $7954
+
+
+
+; Slightly faster ADD_HL_A
+		FPOS $7994 - GameMemoryBase + GameDiskOffset
+		ORG $7994
+add_hl_a:
+		add a,l
+        ld l,a
+        ret nc
+        inc h
+        ret
+		ASSERT $ <= $799a
+
+
+
+; Faster psg out
+		FPOS $7f81 - GameMemoryBase + GameDiskOffset
+		ORG $7f81
+fast_psg_out:
+		di
+		ld c,a
+		ld a,b
+		out ($a0),a
+		ld a,c
+		out ($a1),a
+		ret
+		ASSERT $ <= $7f8a
+
+
+
+; Faster msx music out
+		FPOS $7f91 - GameMemoryBase + GameDiskOffset
+		ORG $7f91
+fast_msx_music_out:
+        di
+        push af
+        ld a,b
+.out_register:
+        out ($7c),a
+        pop af
+.out_data:
+        out ($7d),a
+        ret
+		ASSERT $ <= $7fa2
+
+
+
+; Faster sprites copy routine
+		FPOS $81a3 - TownMemoryBase + TownDiskOffset
+		ORG $81a3
+copy_sprites:
+		ld a,(ix + 4)
+		sla a
+		sla a
+		ld b,a
+		sla a
+		add a,b
+		ld d,0
+		ld e,a
+		ld iy,$8218
+		add iy,de
+		ld a,(ix + 6)
+		or a
+		jr z,1f
+		ld e,6
+		add iy,de	; IY points to SX/SY values
+1:
+		ld a,($80dd)
+		sla a
+		ld b,a
+		sla a
+		add a,b
+		ld hl,$8248
+		add a,l		; HL doesn't cross 256 byte boundary
+		ld l,a		; HL points to DX/DY values
+
+		xor a
+		ld (VdpCommandData.SX + 1),a
+		ld (VdpCommandData.SY + 1),a
+		ld (VdpCommandData.DX + 1),a
+		ld a,3
+		ld (VdpCommandData.DY + 1),a
+		ld de,$40
+		ld (VdpCommandData.NX),de
+		ld e,$1
+		ld (VdpCommandData.NY),de
+		
+		ld b,a
+.loop:
+		ld a,(iy)
+		ld (VdpCommandData.SX),a
+		inc iyl		; IY doesn't cross 256 byte boundary
+		ld a,(ix + 5)
+		sla a
+		ld d,a
+		sla a
+		add a,d
+		add a,(iy)
+		ld (VdpCommandData.SY),a
+		inc iyl
+		ld a,(hl)
+		ld (VdpCommandData.DX),a
+		inc l		; HL doesn't cross 256 byte boundary
+		ld a,(hl)
+		ld (VdpCommandData.DY),a
+		inc l
+		call $7025
+		djnz .loop
+		ret
+		ASSERT $ <= $8218
 
 
 
@@ -666,8 +879,8 @@ set_vram_pointer:
 		ORG $8308
 		jp fast_ldir
 		ASSERT $ <= $830b
-
-
+		
+		
 
 ; Use fast otir routine to copy sprite colors
 		FPOS $8389 - TownMemoryBase + TownDiskOffset
@@ -695,3 +908,11 @@ set_vram_pointer:
 		FPOS $aabe - BattleMemoryBase + BattleDiskOffset
 		jp sleep
 		ASSERT $ <= $aac7
+
+
+
+; Call music routine directly without all push/pop
+		FPOS $1d7e2	; In STARTUP.COM
+		ORG $bf70
+		jp $75d4
+		ASSERT $ < $bf8b
