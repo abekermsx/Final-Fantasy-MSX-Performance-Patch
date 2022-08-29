@@ -24,6 +24,8 @@ BDOS:	EQU $f37d
 HKEYI:	EQU $fd9a
 HTIMI:	EQU $fd9f
 
+RG9SAV: EQU $ffe8
+
 _LOGIN:	EQU $18
 
 
@@ -95,6 +97,8 @@ verify_ctrl_boot:
 init:
 		xor a
 		ld (TurboMode),a
+		ld a,5
+		ld (MusicEqualizer),a
 
 		ld hl,MSXVER
 		ld a,(EXPTBL)
@@ -282,7 +286,8 @@ fast_hl_div_8:
 		srl h
 		rr l	; /8
 		ret
-		
+
+; Replace the default MSX Music out routine with one suitable for R800 mode if necessary
 init_msx_music_out:
 		ld a,(TurboMode)
 		or a
@@ -297,6 +302,7 @@ init_msx_music_out:
 		ld hl,$bd00
 		ret
 
+; MSX Music out routine suitable for R800
 r800_msx_music_out:
         di
         push af
@@ -307,7 +313,7 @@ r800_msx_music_out:
 .wait:  
 		in a,($e6)
         sub b
-        cp 7
+        cp 6
         jr c,.wait
 		
 		pop bc
@@ -319,8 +325,22 @@ r800_msx_music_out:
         pop af
         out ($7d),a
         ret
+
+; Play the music the same speed on 50hz as on 60hz
+music_play:
+		call $75d4
+		ld a,(RG9SAV)
+		and 2
+		ret z
+		ld hl,MusicEqualizer
+		dec (hl)
+		ret nz
+		ld (hl),5
+		jp $75d4
+
 data_end:
 
+MusicEqualizer:	 db 0
 R800WaitCounter: db 0
 TurboMode:		 db 0
 
@@ -838,7 +858,7 @@ fast_psg_out:
 
 
 
-; Faster msx music out
+; Faster msx music out (Z80 only)
 		FPOS $7f91 - GameMemoryBase + GameDiskOffset
 		ORG $7f91
 fast_msx_music_out:
@@ -960,5 +980,5 @@ copy_sprites:
 ; Call music routine directly without all push/pop
 		FPOS $1d7e2	; In STARTUP.COM
 		ORG $bf70
-		jp $75d4
+		jp music_play	;$75d4
 		ASSERT $ < $bf8b
