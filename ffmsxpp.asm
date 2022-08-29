@@ -178,7 +178,7 @@ interrupt_handler:
 		out ($99),a
 		ld a,$8f
 .out2:
-		out ($99),a
+		out ($99),a	; select S#0 so we can check if it's vblank interrupt
 
 .in1:
 		in a,($99)
@@ -188,7 +188,7 @@ interrupt_handler:
 		ld a,1
 		out ($99),a
 		ld a,$8f
-		out ($99),a
+		out ($99),a	; select S#1 so we can check if it's line interrupt
 
 		in a,($99)
 		rra
@@ -211,7 +211,7 @@ interrupt_handler:
 		out ($99),a
 		ld a,$8f
 .out4:
-		out ($99),a
+		out ($99),a	; select S#2 again to be able to quickly check if VDP command is being executed
 
 		pop af		; Remove RET to make sure BIOS doesn't do unwanted things
 
@@ -304,7 +304,6 @@ init_msx_music_out:
 
 ; MSX Music out routine suitable for R800
 r800_msx_music_out:
-        di
         push af
 		push bc
 
@@ -319,6 +318,7 @@ r800_msx_music_out:
 		pop bc
 		
         ld a,b
+        di
         out ($7c),a
         in a,($e6)
 		ld (R800WaitCounter),a
@@ -410,8 +410,8 @@ convert_16x16_to_8x8:
 		ld (ix + $21),a
 
 		inc iy
-		inc ix
-		inc ix
+		inc ixl		; IX doesn't cross 256 byte boundary while looping columns
+		inc ixl
 		djnz .loop_columns
 
 		ld e,$20
@@ -526,8 +526,8 @@ copy_updated_tiles:
 		call copy_tile
 
 .next:
-		inc hl
-		inc de
+		inc l
+		inc e
 
 		ld a,b
 		add a,8
@@ -535,14 +535,14 @@ copy_updated_tiles:
 		cp 240
 		jp nz,.loop_columns
 
-		inc hl
-		inc hl
-		inc hl
-		inc hl
-		inc de
-		inc de
-		inc de
-		inc de
+		inc l
+		inc l
+		inc hl	; crossing 256 byte boundary here
+		inc l
+		inc e
+		inc e
+		inc de	; crossing 256 byte boundary here
+		inc e
 
 		ld a,c
 		add a,8
@@ -634,6 +634,8 @@ copy_tile:
 		ei
 		ld b,c
 
+		ld hl,VdpCommandData
+		
 		ld a,(VdpPort.Read)
 		ld c,a
 .wait:
@@ -641,7 +643,6 @@ copy_tile:
 		rrca
 		jr c,.wait
 
-		ld hl,VdpCommandData
 		ld c,b
 
 		di
