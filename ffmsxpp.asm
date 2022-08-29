@@ -63,7 +63,6 @@ VdpCommandData.NY:	EQU $dc10
 VdpCommandData.CMD:	EQU $dc15
 VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
 
-TurboMode:			EQU BUF-1
 
 
 		INCBIN "ff.dsk"
@@ -283,8 +282,48 @@ fast_hl_div_8:
 		srl h
 		rr l	; /8
 		ret
+		
+init_msx_music_out:
+		ld a,(TurboMode)
+		or a
+		jr z,.end
+		
+		ld a,$c3	; JP
+		ld ($7f91),a
+		ld hl,r800_msx_music_out
+		ld ($7f92),hl
+		
+.end:
+		ld hl,$bd00
+		ret
 
+r800_msx_music_out:
+        di
+        push af
+		push bc
+
+        ld a,(R800WaitCounter)
+        ld b,a
+.wait:  
+		in a,($e6)
+        sub b
+        cp 7
+        jr c,.wait
+		
+		pop bc
+		
+        ld a,b
+        out ($7c),a
+        in a,($e6)
+		ld (R800WaitCounter),a
+        pop af
+        out ($7d),a
+        ret
 data_end:
+
+R800WaitCounter: db 0
+TurboMode:		 db 0
+
 		ASSERT $ <= TTYPOS
 
 
@@ -776,6 +815,14 @@ add_hl_a:
 
 
 
+; Init msx music out routine for R800 if needed
+		FPOS $752f - GameMemoryBase + GameDiskOffset
+		ORG $752f
+		call init_msx_music_out
+		ASSERT $ <= $7532
+		
+
+
 ; Faster psg out
 		FPOS $7f81 - GameMemoryBase + GameDiskOffset
 		ORG $7f81
@@ -798,10 +845,9 @@ fast_msx_music_out:
         di
         push af
         ld a,b
-.out_register:
         out ($7c),a
         pop af
-.out_data:
+		nop
         out ($7d),a
         ret
 		ASSERT $ <= $7fa2
