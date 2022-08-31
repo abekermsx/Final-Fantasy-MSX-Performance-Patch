@@ -500,19 +500,14 @@ copy_updated_tiles:
 		jr z,.next
 
 .copy:
-		push de
-		
-		ld d,a
+		ld ixl,a
 		and %11100000
 		rrca
 		rrca
 		ld (VdpCommandData.SY),a	; SY
 		
-		add a,a
-		add a,a
-		ld e,a
-		ld a,d
-		sub e
+		ld a,ixl
+		and %00011111
 		rlca
 		rlca
 		rlca
@@ -524,8 +519,6 @@ copy_updated_tiles:
 		ld a,c
 		ld (VdpCommandData.DY),a	; DY
 
-		pop de
-		
 		call copy_tile
 
 .next:
