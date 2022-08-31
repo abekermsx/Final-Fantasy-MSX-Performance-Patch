@@ -138,6 +138,8 @@ set_interrupt_handler:
 		ld (interrupt_handler.out2 + 1),a
 		ld (interrupt_handler.out3 + 1),a
 		ld (interrupt_handler.out4 + 1),a
+		ld (interrupt_handler.out5 + 1),a
+		ld (interrupt_handler.out6 + 1),a
 
 		push af
 
@@ -146,6 +148,7 @@ set_interrupt_handler:
 		call RDSLT
 		inc a
 		ld (interrupt_handler.in1 + 1),a
+		ld (interrupt_handler.in2 + 1),a
 
 		ld a,$c3	; JP
 		ld (HKEYI),a
@@ -164,9 +167,8 @@ set_interrupt_handler:
 		ld (RG0SAV),a
 		out (c),a
 		ld a,$80
-		out (c),a
-
 		ei
+		out (c),a
 		ret
 
 data:
@@ -186,17 +188,20 @@ interrupt_handler:
 		jr c,.vblank
 
 		ld a,1
+.out3:
 		out ($99),a
 		ld a,$8f
+.out4:
 		out ($99),a	; select S#1 so we can check if it's line interrupt
 
+.in2:
 		in a,($99)
 		rra
 		jr nc,.end
 
 .hblank:
 		call HTIMI
-		jr.end
+		jr .end
 
 .vblank:
 		ld hl,JIFFY	; Abuse JIFFY for NPC animation framerate limiter
@@ -207,10 +212,10 @@ interrupt_handler:
 
 .end:
 		ld a,2
-.out3:
+.out5:
 		out ($99),a
 		ld a,$8f
-.out4:
+.out6:
 		out ($99),a	; select S#2 again to be able to quickly check if VDP command is being executed
 
 		pop af		; Remove RET to make sure BIOS doesn't do unwanted things
@@ -485,7 +490,6 @@ copy_updated_tiles:
 		ld (ix + $20),a
 		ld (ix + $21),a
 
-
 		ld c,8
 .loop_rows:
 
@@ -497,20 +501,13 @@ copy_updated_tiles:
 
 .copy:
 		push de
+		
 		ld d,a
-
-		ld a,b
-		ld (VdpCommandData.DX),a	; DX
-
-		ld a,c
-		ld (VdpCommandData.DY),a	; DY
-
-		ld a,d
 		and %11100000
-		srl a
+		rrca
 		rrca
 		ld (VdpCommandData.SY),a	; SY
-
+		
 		add a,a
 		add a,a
 		ld e,a
@@ -521,8 +518,14 @@ copy_updated_tiles:
 		rlca
 		ld (VdpCommandData.SX),a	; SX
 
-		pop de
+		ld a,b
+		ld (VdpCommandData.DX),a	; DX
 
+		ld a,c
+		ld (VdpCommandData.DY),a	; DY
+
+		pop de
+		
 		call copy_tile
 
 .next:
