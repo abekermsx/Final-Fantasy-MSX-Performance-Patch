@@ -91,7 +91,7 @@ verify_ctrl_boot:
 
 
 
-; When running on Turbo R, enable R800 if SEL key is pressed
+; When running on Turbo R, enable R800 unless SEL key is pressed
 		FPOS $8170 - LoaderMemoryBase + LoaderDiskOffset
 		ORG $8170
 init:
@@ -113,7 +113,7 @@ init:
 		in a,($a9)
 		rlca
 		rlca
-		jr c,set_interrupt_handler
+		jr nc,set_interrupt_handler
 
 		ld a,$81
 		ld ix,CHGCPU
