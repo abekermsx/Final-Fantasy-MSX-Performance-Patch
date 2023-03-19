@@ -12,19 +12,19 @@ CALSLT:	EQU $1c
 
 MSXVER:	EQU $2d
 
-CHGCPU: EQU $180
+CHGCPU:	EQU $180
 
 RG0SAV:	EQU $f3df
+RG9SAV:	EQU $ffe8
 BUF:	EQU $f55e
 TTYPOS:	EQU	$f661
 JIFFY:	EQU	$fc9e
 EXPTBL:	EQU $fcc1
 
 BDOS:	EQU $f37d
+
 HKEYI:	EQU $fd9a
 HTIMI:	EQU $fd9f
-
-RG9SAV: EQU $ffe8
 
 _LOGIN:	EQU $18
 
@@ -35,7 +35,7 @@ LoaderDiskOffset:	EQU $0400
 
 ; MAIN.COM
 GameMemoryBase:		EQU $4000
-GameDiskOffset: 	EQU $c800
+GameDiskOffset:		EQU $c800
 
 ; SMAP.COM
 TownMemoryBase:		EQU $8000
@@ -53,7 +53,6 @@ StartUpDiskOffset:	EQU $1c800
 VdpPort.Vram:		EQU $dc01
 VdpPort.Read:		EQU $dc02
 VdpPort.Write:		EQU $dc03
-VdpPort.WriteIndirect:		EQU $dc05
 
 VdpCommandData:		EQU $dc06
 VdpCommandData.SX:	EQU $dc06
@@ -65,6 +64,7 @@ VdpCommandData.NY:	EQU $dc10
 VdpCommandData.CMD:	EQU $dc15
 VdpCommandData.ARG:	EQU $dc16	; CMD / ARG swapped positions
 
+FrameCounter:		EQU $dc1d
 
 
 		INCBIN "ff.dsk"
@@ -199,7 +199,7 @@ interrupt_handler:
 		rra
 		jr nc,.end
 
-.hblank:
+.line_interrupt:
 		call HTIMI
 		jr .end
 
@@ -207,7 +207,7 @@ interrupt_handler:
 		ld hl,JIFFY	; Abuse JIFFY for NPC animation framerate limiter
 		inc (hl)
 
-		ld hl,$dc1d
+		ld hl,FrameCounter
 		inc (hl)
 
 .end:
@@ -309,27 +309,27 @@ init_msx_music_out:
 
 ; MSX Music out routine suitable for R800
 r800_msx_music_out:
-        push af
+		push af
 		push bc
 
-        ld a,(R800WaitCounter)
-        ld b,a
-.wait:  
+		ld a,(R800WaitCounter)
+		ld b,a
+.wait:
 		in a,($e6)
-        sub b
-        cp 6
-        jr c,.wait
-		
+		sub b
+		cp 6
+		jr c,.wait
+
 		pop bc
-		
-        ld a,b
-        di
-        out ($7c),a
-        in a,($e6)
+
+		ld a,b
+		di
+		out ($7c),a
+		in a,($e6)
 		ld (R800WaitCounter),a
-        pop af
-        out ($7d),a
-        ret
+		pop af
+		out ($7d),a
+		ret
 
 ; Play the music the same speed on 50hz as on 60hz
 music_play:
@@ -712,16 +712,16 @@ wait_vdp_command_completion:
 		FPOS $718d - GameMemoryBase + GameDiskOffset
 		ORG $718d
 read_vdp_status_register:
-        push bc
-        ld bc,(VdpPort.Write)
-        di
-        out (c),a
-        ld a,$8f
-        out (c),a
-        ld bc,(VdpPort.Read)
-        in a,(c)
-        push af
-        ld c,b
+		push bc
+		ld bc,(VdpPort.Write)
+		di
+		out (c),a
+		ld a,$8f
+		out (c),a
+		ld bc,(VdpPort.Read)
+		in a,(c)
+		push af
+		ld c,b
 		ld a,2
 		out (c),a
 		ld a,$8f
@@ -743,24 +743,24 @@ set_vram_pointer:
 		ld c,a
 
 		ld a,h
-        and $c0
-        or b
-        rlca
-        rlca
-        di
-        out (c),a
-        ld a,$8e
-        out (c),a
-        ld a,l
-        out (c),a
+		and $c0
+		or b
+		rlca
+		rlca
+		di
+		out (c),a
+		ld a,$8e
+		out (c),a
+		ld a,l
+		out (c),a
 		ex af,af'
 		or a
-        ld a,h
+		ld a,h
 		jr z,.read
 
 .write:
-        and $3f
-        or $40
+		and $3f
+		or $40
 		out (c),a
 		ld a,(VdpPort.Vram)
 		ld c,a
@@ -824,10 +824,10 @@ scan_music_event_table:
 		ORG $7994
 add_hl_a:
 		add a,l
-        ld l,a
-        ret nc
-        inc h
-        ret
+		ld l,a
+		ret nc
+		inc h
+		ret
 		ASSERT $ <= $799a
 
 
@@ -859,14 +859,14 @@ fast_psg_out:
 		FPOS $7f91 - GameMemoryBase + GameDiskOffset
 		ORG $7f91
 fast_msx_music_out:
-        di
-        push af
-        ld a,b
-        out ($7c),a
-        pop af
+		di
+		push af
+		ld a,b
+		out ($7c),a
+		pop af
 		nop
-        out ($7d),a
-        ret
+		out ($7d),a
+		ret
 		ASSERT $ <= $7fa2
 
 
@@ -975,7 +975,7 @@ copy_sprites:
 
 
 ; Call music routine directly without all push/pop
-		FPOS $1d7e2	; In STARTUP.COM
+		FPOS StartUpDiskOffset + $fe2
 		ORG $bf70
 		jp music_play	;$75d4
 		ASSERT $ < $bf8b
