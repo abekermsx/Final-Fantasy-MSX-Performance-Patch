@@ -24,7 +24,7 @@ call_update_npc:
 		FPOS $56f5 - MainMemoryBase + MainFileOffset
 		ORG $56f5
 update_framerate_limiter:
-		db 5
+		db 7
 		ASSERT $ <= $56f6
 
 
