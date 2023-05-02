@@ -4,7 +4,7 @@
 		ORG $8200
 set_interrupt_handler:
 		ld hl,data
-		ld de,BUF
+		ld de,KBUF
 		ld bc,data_end - data_start
 		ldir
 
@@ -12,66 +12,119 @@ set_interrupt_handler:
 		ld a,(EXPTBL)
 		call RDSLT
 		inc a
-		ld (interrupt_handler.out1 + 1),a
-		ld (interrupt_handler.out2 + 1),a
-		ld (interrupt_handler.out3 + 1),a
-		ld (interrupt_handler.out4 + 1),a
-		ld (interrupt_handler.out5 + 1),a
-		ld (interrupt_handler.out6 + 1),a
-
-		push af
+		ld (wrtvdp.out1 + 1),a
+		ld (wrtvdp.out2 + 1),a
 
 		ld hl,VDP_DR
 		ld a,(EXPTBL)
 		call RDSLT
 		inc a
+		ld (set_default_interrupt_handler.in1 + 1),a
 		ld (interrupt_handler.in1 + 1),a
 		ld (interrupt_handler.in2 + 1),a
 
-		ld a,$c3	; JP
-		ld (HKEYI),a
-		ld hl,BUF
-		ld (HKEYI + 1),hl
-
-		pop af
-		ld c,a
-		ld a,1
-		out (c),a
-		ld a,$80 + 19
-		out (c),a
-
-        ld hl,RG0SAV
-        ld a,(hl)
-        or 16
-        ld (hl),a
-		out (c),a
-		ld a,$80
-		ei
-		out (c),a
+		ld hl,HKEYI
+		ld de,hkeyi_backup
+		ld bc,3
+		ldir
+		
+		call set_game_interrupt_handler
 		ret
 
 data:
-		ORG BUF
+		ORG KBUF
 data_start:
-interrupt_handler:
-		xor a
+
+set_game_interrupt_handler:
+		di
+		ld a,$c3	; JP
+		ld (HKEYI),a
+		ld hl,interrupt_handler
+		ld (HKEYI + 1),hl
+		
+		ld bc,1 * 256 + $80 + 19
+		call wrtvdp
+		
+        ld hl,RG0SAV
+        ld a,(hl)
+        or 16			; enable line interrupts
+        ld (hl),a
+
+		ld b,a
+		ld c,$80
+.end:
+		call wrtvdp
+		ei
+		ret
+		
+set_default_interrupt_handler:
+		di
+		ld hl,hkeyi_backup
+		ld de,HKEYI
+		ld bc,3
+		ldir
+		
+		ld hl,RG0SAV
+		ld a,(hl)
+		and %11101111	; disable line interrupts
+		ld (hl),a
+		
+		ld b,a
+		ld c,$80
+		call wrtvdp
+		
+		ld bc,1 * 256 + $80 + 15
+		call wrtvdp		; select S#0 so we can check line interrupt
+
+.in1:
+		in a,($99)		; make sure to clear potential pending line interrupt
+		
+		ld bc,0 * 256 + $80 + 15	; select S#0 so BIOS can check vblank interrupt
+		jr set_game_interrupt_handler.end
+		
+
+; Write data to VDP register
+; In: B: data
+;     C: register (with bit 7 set!)
+wrtvdp:
+		ld a,b
 .out1:
 		out ($99),a
-		ld a,$8f
+		ld a,c
 .out2:
-		out ($99),a	; select S#0 so we can check if it's vblank interrupt
+		out ($99),a
+		ret
+		
+
+hkeyi_backup:
+		ds 3
+
+
+; Helper routine to read from keyboard
+; BIOS routine CHGET needs original HKEYI to be able to read from keyboard 
+chget_helper:
+		call set_default_interrupt_handler
+		call CALSLT
+		push af
+		call set_game_interrupt_handler
+		pop af
+		ret
+		
+
+; Custom interrupt handler to use during game
+; Main purpose is to keep VDP S#2 as default register during normal game, to be able to quickly check if VDP command is still being executed
+; When a line interrupt occurs, the HTIMI hook is called which will in turn will call the music replay routine
+interrupt_handler:
+		ld bc,0 * 256 + $80 + 15
+		call wrtvdp	; select S#0 so we can check if it's vblank interrupt
 
 .in1:
 		in a,($99)
 		add a,a
 		jr c,.vblank
 
-		ld a,1
-.out3:
-		out ($99),a
-		ld a,$8f
-.out4:
-		out ($99),a	; select S#1 so we can check if it's line interrupt
+		inc b
+		call wrtvdp ; select S#1 so we can check if it's line interrupt
 
 .in2:
 		in a,($99)
@@ -90,12 +143,8 @@ interrupt_handler:
 		inc (hl)
 
 .end:
-		ld a,2
-.out5:
-		out ($99),a
-		ld a,$8f
-.out6:
-		out ($99),a	; select S#2 again to be able to quickly check if VDP command is being executed
+		ld bc,2 * 256 + $80 + 15
+		call wrtvdp ; select S#2 again to be able to quickly check if VDP command is being executed
 
 		pop af		; Remove RET to make sure BIOS doesn't do unwanted things
 
@@ -228,4 +277,4 @@ MusicEqualizer:	 db 0
 R800WaitCounter: db 0
 TurboMode:		 db 0
 
-		ASSERT $ <= TTYPOS
+		ASSERT $ <= BUFMIN
