@@ -2,7 +2,7 @@
 ## About
 Improves the performance of Final Fantasy MSX by removing the framerate limiter and replacing some routines with optimized code.
 
-This patch was tested with a diskimage of the game with CRC32 checksum 4CFD3A9E, it will probably work with other versions as well.
+This patch was tested with a diskimage of the game with CRC32 checksum `4CFD3A9E`, it will probably work with other versions as well. It's also compatible with `Final Fantasy MSX2: English Translation`!
 
 ## Patching
 There are three methods to patch the game.
@@ -30,6 +30,8 @@ data/files/files/STARTUP.COM
 The patched files will be outputted the `out` directory. Overwrite the original files and use the `Final Fantasy MSX2: Say DOS Tool` to generate a new diskimage.
 
 ## Links
+- `Final Fantasy MSX2: English Translation` : https://github.com/romh-acking/final-fantasy-msx2-en
 - `Final Fantasy MSX2: Say DOS Tool` : https://github.com/romh-acking/final-fantasy-msx2-say-dos-tool
+- `Final Fantasy MSX2: (De)Compressor Tool` : https://github.com/romh-acking/final-fantasy-msx2-de-compressor
 - `Lunar Patcher` : https://www.romhacking.net/utilities/240/
 - `sjasmplus` : https://github.com/z00m128/sjasmplus
